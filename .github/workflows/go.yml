@@ -45,6 +45,8 @@ jobs:
           ls -la web/default/dist
           ls -la web/classic/dist
 
+      - name: Test Go
+        run: go test ./...
+
       - name: Build Go
         run: go build -v ./...
-
