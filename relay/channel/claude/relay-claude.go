@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -30,6 +31,52 @@ const (
 	WebSearchMaxUsesMedium = 5
 	WebSearchMaxUsesHigh   = 10
 )
+
+func claudeMediaMessageFromOpenAIFile(file *dto.MessageFile) (*dto.ClaudeMediaMessage, bool) {
+	if file == nil || file.FileData == "" {
+		return nil, false
+	}
+
+	fileName := strings.ToLower(file.FileName)
+	if strings.HasSuffix(fileName, ".pdf") {
+		return &dto.ClaudeMediaMessage{
+			Type: "document",
+			Source: &dto.ClaudeMessageSource{
+				Type:      "base64",
+				MediaType: "application/pdf",
+				Data:      file.FileData,
+			},
+		}, true
+	}
+
+	if isClaudeTextFile(fileName) {
+		data, err := base64.StdEncoding.DecodeString(file.FileData)
+		if err != nil {
+			return nil, false
+		}
+		return &dto.ClaudeMediaMessage{
+			Type: "text",
+			Text: common.GetPointer(string(data)),
+		}, true
+	}
+
+	return nil, false
+}
+
+func isClaudeTextFile(fileName string) bool {
+	textExtensions := []string{
+		".txt", ".md", ".markdown", ".csv", ".json", ".jsonl", ".xml", ".html", ".htm",
+		".yaml", ".yml", ".toml", ".log", ".go", ".js", ".jsx", ".ts", ".tsx", ".py",
+		".java", ".c", ".cc", ".cpp", ".h", ".hpp", ".cs", ".php", ".rb", ".rs", ".sh",
+		".sql", ".css",
+	}
+	for _, ext := range textExtensions {
+		if strings.HasSuffix(fileName, ext) {
+			return true
+		}
+	}
+	return false
+}
 
 func stopReasonClaude2OpenAI(reason string) string {
 	return reasonmap.ClaudeStopReasonToOpenAIFinishReason(reason)
@@ -379,6 +426,10 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 								Type: "text",
 								Text: common.GetPointer[string](mediaMessage.Text),
 							})
+						}
+					case dto.ContentTypeFile:
+						if claudeMediaMessage, ok := claudeMediaMessageFromOpenAIFile(mediaMessage.GetFile()); ok {
+							claudeMediaMessages = append(claudeMediaMessages, *claudeMediaMessage)
 						}
 					default:
 						source := mediaMessage.ToFileSource()
